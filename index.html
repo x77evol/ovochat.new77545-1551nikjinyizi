@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -99,7 +98,7 @@
         .fingerprint-circle { width: 90px; height: 90px; border-radius: 50%; border: 2px solid #111; display: flex; justify-content: center; align-items: center; cursor: pointer; position: relative; overflow: hidden; background: rgba(255,255,255,0.8); transition: all 0.2s; box-shadow: inset 0 0 10px rgba(0,0,0,0.1); }
         .fingerprint-circle i { font-size: 45px; color: #ccc; z-index: 2; transition: color 0.2s; }
         .fingerprint-svg-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; display: flex; justify-content: center; align-items: center; }
-        .fingerprint-path { fill: none; stroke: #111; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1000; stroke-dashoffset: 1000; transition: stroke-dashoffset 0.1s linear; }
+        .fingerprint-path { fill: none; stroke: #111; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1000; stroke-dashoffset: 1000; transition: stroke-dashoffset 1.5s ease-out; }
         .fingerprint-circle.scanning { background: rgba(17,17,17,0.05); border-color: #111; transform: scale(0.95); }
         .fingerprint-circle.scanning i { color: transparent; } /* 扫描时隐藏默认图标，显示真实纹路 */
         
@@ -240,7 +239,7 @@
         .fp-record-circle.recording { transform: scale(0.95); border-color: #333; }
         .fp-record-circle.recording i { color: transparent; }
         .fp-record-svg-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; display: flex; justify-content: center; align-items: center; }
-        .fp-record-path { fill: none; stroke: #111; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1500; stroke-dashoffset: 1500; transition: stroke-dashoffset 0.1s linear; }
+        .fp-record-path { fill: none; stroke: #111; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1500; stroke-dashoffset: 1500; transition: stroke-dashoffset 1.5s ease-out; }
 
         /* ==========================================
            世界书 App (黑白线条风适配)
@@ -984,8 +983,8 @@
         function checkActivationStatus() {
             const lastActive = localStorage.getItem('lastActiveTime');
             const now = Date.now();
-            // 15天未使用，重置激活状态，强制要求密码
-            if (lastActive && (now - parseInt(lastActive) > 15 * 24 * 60 * 60 * 1000)) {
+            // 15天未使用，重置激活状态，强制要求密码 (15天 = 15 * 24 * 60 * 60 * 1000 = 1296000000 毫秒)
+            if (lastActive && (now - parseInt(lastActive) > 1296000000)) {
                 localStorage.setItem('isPhoneActivated', 'false');
             }
             localStorage.setItem('lastActiveTime', now.toString());
@@ -1111,16 +1110,11 @@
                     throw new Error("No credentials or WebAuthn not supported");
                 }
             } catch (e) {
-                console.log("WebAuthn调用受限或未配置，降级为高精度视觉模拟验证", e);
-                // 视觉模拟验证逻辑 (当真实硬件API受限时，为了保证体验不中断)
-                fpUnlockTimer = setTimeout(() => {
-                    if (appData.settings.fingerprints && appData.settings.fingerprints.length > 0) {
-                        unlockSuccess();
-                    } else {
-                        document.getElementById('fp-lock-hint').textContent = '未录入指纹，请使用密码';
-                        stopFpUnlock();
-                    }
-                }, 800);
+                console.log("WebAuthn调用受限或未配置", e);
+                // 严格遵守要求：禁止模拟。如果硬件不支持或拒绝，直接报错。
+                document.getElementById('fp-lock-hint').textContent = '未检测到真实生物识别硬件或授权被拒绝';
+                stopFpUnlock();
+                showiOSAlert('错误', '无法调用真实指纹硬件，请使用密码解锁', 'error');
             }
         }
 
@@ -1132,13 +1126,14 @@
         }
 
         function stopFpUnlock() {
-            clearTimeout(fpUnlockTimer);
             const btn = document.getElementById('fp-unlock-btn');
             const path = document.getElementById('fp-unlock-path');
             btn.classList.remove('scanning');
             path.style.strokeDashoffset = '1000'; // 重置纹路
             if (!lockScreen.classList.contains('hidden')) {
-                document.getElementById('fp-lock-hint').textContent = '长按验证指纹解锁';
+                setTimeout(() => {
+                    document.getElementById('fp-lock-hint').textContent = '长按验证指纹解锁';
+                }, 1000);
             }
         }
 
@@ -3529,8 +3524,8 @@
                     <div class="glass-form-group"><label>供应商</label><select id="api-provider" class="glass-select">${providerOptions}</select></div>
                     <div class="glass-form-group"><label>API端点 (Endpoint URL)</label><input type="text" id="api-endpoint" class="glass-input" value="${api.endpoint || ''}" placeholder="例如: https://api.openai.com"></div>
                     <div class="glass-form-group"><label>密钥 (API Key)</label><input type="password" id="api-key" class="glass-input" value="${api.key || ''}"></div>
-                    <div class="glass-form-group"><label>模型</label><div class="form-row"><input type="text" id="api-model" class="glass-input" value="${api.model || ''}" style="flex: 1;" placeholder="例如: gpt-4-turbo"><button id="fetch-models-btn" class="glass-button">获取</button></div></div>
-                                        <div class="glass-form-group"><label>Temperature: <span id="temp-value">${(api.temperature || 1.0).toFixed(2)}</span></label><input type="range" id="temperature" min="0" max="2" step="0.01" value="${api.temperature || 1.0}"></div>
+                                        <div class="glass-form-group"><label>模型</label><div class="form-row"><input type="text" id="api-model" class="glass-input" value="${api.model || ''}" style="flex: 1;" placeholder="例如: gpt-4-turbo"><button id="fetch-models-btn" class="glass-button">获取</button></div></div>
+                    <div class="glass-form-group"><label>Temperature: <span id="temp-value">${(api.temperature || 1.0).toFixed(2)}</span></label><input type="range" id="temperature" min="0" max="2" step="0.01" value="${api.temperature || 1.0}"></div>
                     <div class="glass-form-group"><label>Repetition Penalty: <span id="penalty-value">${(api.repetition_penalty || 1.0).toFixed(2)}</span></label><input type="range" id="repetition-penalty" min="0" max="2" step="0.01" value="${api.repetition_penalty || 1.0}"></div>
                     <button class="glass-button" id="save-api-btn" style="width:100%; margin-top:10px;">保存 API 设置</button>
                 </div>
@@ -3812,15 +3807,14 @@
                     throw new Error("WebAuthn not supported");
                 }
             } catch (e) {
-                console.log("WebAuthn录入受限，降级为视觉模拟录入", e);
-                fpRecordTimer = setTimeout(() => {
-                    finishRecordFp(`mock_fp_${Date.now()}`);
-                }, 1500); // 模拟1.5秒录入时间
+                console.log("WebAuthn录入受限", e);
+                // 严格遵守要求：禁止模拟。如果硬件不支持或拒绝，直接报错。
+                stopRecordFp();
+                showiOSAlert('错误', '无法调用真实指纹硬件，录入失败', 'error');
             }
         }
 
         function stopRecordFp() {
-            clearTimeout(fpRecordTimer);
             const circle = document.getElementById('fp-record-btn');
             const path = document.getElementById('fp-record-path');
             
@@ -4096,4 +4090,4 @@
         }
     </script>
 </body>
-</html>*
+</html>
